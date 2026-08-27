@@ -41,6 +41,7 @@ import {
   canvasToast,
   drawCanvas,
   exitSplitIfActive,
+  focusedPaneSession,
   loadPersistedSplit,
   mountRestoredCanvas,
   openBlankInFocusedPane,
@@ -56,8 +57,10 @@ import {
   refreshSessions,
   renderList,
   resetSessionsState,
+  sessionTitle,
   sessionsState,
   toggleWebOnly,
+  sessionSelectionBar,
 } from "./sessions";
 import { openCronById, renderCronsPage, resetActiveCron, routeCronsHistory } from "./crons";
 import { openWebhookById, renderWebhooksPage, resetActiveWebhook, routeWebhooksHistory } from "./webhooks";
@@ -72,6 +75,7 @@ import { renderSkills } from "./skills";
 import { contextsState, ensureContexts, renderContexts, resetContextsState, resolveProjectScope } from "./contexts";
 import { appState, can, isView, type AuthMode, type Me, type View } from "./shell-state";
 import { trapDialogFocus } from "./dialog-focus";
+import { activeSessionForDocumentTitle, updateDocumentTitle } from "./document-title";
 export { appState, can, type Me, type View } from "./shell-state";
 
 let authMode: AuthMode = "portal";
@@ -206,6 +210,7 @@ export async function signOut(): Promise<void> {
   resetContextsState();
   resetKeychainState();
   mainConversation().composer.resetComposer();
+  updateDocumentTitle();
   if (!portal) {
     renderAuthGate({ kind: "dev" });
     return;
@@ -483,6 +488,7 @@ export function mountShell(): void {
 }
 
 export function renderSidebarTop(): void {
+  syncDocumentTitle();
   if (!appState.topEl) return;
   const navRow = (v: View, glyph: IconNode, label: string) =>
     html`<a
@@ -543,38 +549,61 @@ export function renderSidebarTop(): void {
           `,
         )}
       </nav>
-      ${html`
-        <div class="section-label recents-label">
-          <span>Sessions</span>
-          <button
-            class="chat-search-open"
-            type="button"
-            aria-label="Search your chats"
-            @click=${() => {
-              hideTooltip();
-              openChatSearch();
-            }}
-            @mouseenter=${(e: Event) => showTooltip(e.currentTarget as Element, `Search your chats · ${SEARCH_HOTKEY_LABEL}`)}
-            @mouseleave=${(e: Event) => hideTooltip(e.currentTarget as Element)}
-            @focus=${(e: Event) => showTooltip(e.currentTarget as Element, `Search your chats · ${SEARCH_HOTKEY_LABEL}`)}
-            @blur=${(e: Event) => hideTooltip(e.currentTarget as Element)}
-          >
-            ${icon(Search, 13)}
-          </button>
-          <button
-            class="web-only-toggle ${sessionsState.webOnly ? "on" : ""}"
-            type="button"
-            role="switch"
-            aria-checked=${sessionsState.webOnly ? "true" : "false"}
-            title=${sessionsState.webOnly ? "Showing web chats only" : "Hide non-web conversations"}
-            @click=${toggleWebOnly}
-          >
-            <span>Web only</span><span class="mini-switch"><span class="mini-knob"></span></span>
-          </button>
-        </div>
-      `}
+      ${
+        sessionSelectionBar() ??
+        html`
+          <div class="section-label recents-label">
+            <span>Sessions</span>
+            <button
+              class="chat-search-open"
+              type="button"
+              aria-label="Search your chats"
+              @click=${() => {
+                hideTooltip();
+                openChatSearch();
+              }}
+              @mouseenter=${(e: Event) => showTooltip(e.currentTarget as Element, `Search your chats · ${SEARCH_HOTKEY_LABEL}`)}
+              @mouseleave=${(e: Event) => hideTooltip(e.currentTarget as Element)}
+              @focus=${(e: Event) => showTooltip(e.currentTarget as Element, `Search your chats · ${SEARCH_HOTKEY_LABEL}`)}
+              @blur=${(e: Event) => hideTooltip(e.currentTarget as Element)}
+            >
+              ${icon(Search, 13)}
+            </button>
+            <button
+              class="web-only-toggle ${sessionsState.webOnly ? "on" : ""}"
+              type="button"
+              role="switch"
+              aria-checked=${sessionsState.webOnly ? "true" : "false"}
+              title=${sessionsState.webOnly ? "Showing web chats only" : "Hide non-web conversations"}
+              @click=${toggleWebOnly}
+            >
+              <span>Web only</span><span class="mini-switch"><span class="mini-knob"></span></span>
+            </button>
+          </div>
+        `
+      }
     `,
     appState.topEl,
+  );
+}
+
+export function syncDocumentTitle(): void {
+  if (!appState.me) {
+    updateDocumentTitle();
+    return;
+  }
+  const state = mainConversation().state;
+  const active = splitState.active
+    ? focusedPaneSession()
+    : activeSessionForDocumentTitle(sessionsState.list, {
+        openingKey: sessionsState.openingKey,
+        sessionId: state.sessionId,
+        threadRef: state.threadRef,
+      });
+  updateDocumentTitle(
+    appState.currentView,
+    active ? sessionTitle(active) : null,
+    Boolean(active || (!splitState.active && state.threadRef)),
   );
 }
 
